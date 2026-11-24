@@ -1,0 +1,40 @@
+# ---------------- Secrets: NEVER commit ----------------
+# ESP32: Wi-Fi password, service account key, alert topic
+firmware/**/secrets.h
+secrets/
+*service-account*.json
+*-firebase-adminsdk-*.json
+# Android: Firebase app config and alert topic
+**/google-services.json
+**/GoogleService-Info.plist
+app/android/secrets.properties
+
+# ---------------- Android build output ----------------
+app/android/.gradle/
+app/android/.kotlin/
+app/android/build/
+app/android/app/build/
+app/android/local.properties
+app/android/.idea/
+*.apk
+*.aab
+
+# ---------------- AVR build artifacts ----------------
+firmware/avr/*.hex
+firmware/avr/*.elf
+firmware/avr/*.map
+firmware/avr/*.lst
+
+# ---------------- ESP32 build artifacts ----------------
+firmware/esp32/**/build/
+firmware/esp32/.pio/
+
+# ---------------- Python ----------------
+__pycache__/
+
+# ---------------- OS / IDE ----------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">RollKey</string>
+    <string name="alert_channel_name">Lock alerts</string>
+    <string name="alert_channel_desc">Wrong codes, lockouts, unlocks and wipes on your lock</string>
+</resources>

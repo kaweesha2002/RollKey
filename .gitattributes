@@ -1,0 +1,10 @@
+# Normalise text files; keep shell scripts LF and batch files CRLF.
+* text=auto
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.webp binary
+*.jar binary
+*.docx binary

@@ -1,0 +1,17 @@
+<!-- Paste these lines INSIDE <manifest> in app/src/main/AndroidManifest.xml,
+     above the <application> tag. Leave the rest of the file as generated. -->
+
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
+    <!-- Android 12 and newer -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Android 11 and older -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
