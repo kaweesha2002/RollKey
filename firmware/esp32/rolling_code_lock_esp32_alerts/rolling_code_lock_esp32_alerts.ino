@@ -91,7 +91,7 @@
 #include "alerts.h"            // push alerts (separate task)
 
 // ---------------- Debug switch ----------------
-#define DEBUG 1          // 1 = testing, 0 = final build
+#define DEBUG 0          // 1 = testing, 0 = final build
 
 #if DEBUG
   #define LOG(...)   Serial.print(__VA_ARGS__)

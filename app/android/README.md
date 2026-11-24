@@ -6,6 +6,7 @@ The earlier app (sources only) is kept in `app/archive/android_v1/`.
 ## What it does
 - **Bluetooth code:** scans for the lock (`RollingLock`), bonds with the 6-digit pair key, shows the current rolling code (live updates), copy to clipboard.
 - **Push alerts:** subscribes to the lock's FCM topic and shows notifications on channel `lock_alerts` — even when the app is closed. Events: test, wrong code, lockout, hard lockout, unlocked, wipe attempted, wipe done. Recent alerts are listed in the app.
+- **Wiped lock:** if the lock was wiped, the phone's old pairing no longer works. The app detects this (bonded phone dropped before any code arrives) and shows *Lock was reset – pair again* with a button to Bluetooth settings.
 - **App lock:** 6-digit PIN (salted PBKDF2), optional fingerprint, auto-lock after 30 s in the background, screenshots blocked.
 
 ## Files

@@ -17,8 +17,8 @@
 #include <Arduino.h>
 
 // ---------------- Settings ----------------
-#define ALERTS_LOG          1        // 1 = print alert progress + heap numbers to Serial
-#define ALERT_TEST_ON_BOOT  1        // 1 = send one "test" alert after every boot (bench test)
+#define ALERTS_LOG          0        // 1 = print alert progress + heap numbers to Serial
+#define ALERT_TEST_ON_BOOT  0        // 1 = send one "test" alert after every boot (bench test)
 #define ALERT_RATE_LIMIT_MS 30000UL  // at most one alert per event type every 30 s
 #define ALERT_WIFI_TIMEOUT_MS 15000UL
 #define ALERT_TASK_STACK    8192     // bytes; measured peak ~4.5 KB during a full HTTPS send

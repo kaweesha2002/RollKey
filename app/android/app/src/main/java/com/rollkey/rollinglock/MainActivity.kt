@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -275,6 +276,7 @@ fun LockScreen(
         LockStatus.CONNECTED     -> "Connected" to Good
         LockStatus.DISCONNECTED  -> "Disconnected" to Muted
         LockStatus.NOT_FOUND     -> "Lock not found" to Bad
+        LockStatus.REPAIR_NEEDED -> "Lock was reset – pair again" to Bad
     }
 
     val busy = ui.status == LockStatus.SCANNING ||
@@ -308,6 +310,11 @@ fun LockScreen(
             Box(Modifier.size(10.dp).clip(CircleShape).background(statusColor))
             Spacer(Modifier.size(10.dp))
             Text(statusText, color = TextHi, fontSize = 14.sp)
+        }
+
+        if (ui.status == LockStatus.REPAIR_NEEDED) {
+            Spacer(Modifier.height(16.dp))
+            RepairCard()
         }
 
         Spacer(Modifier.height(24.dp))
@@ -410,6 +417,44 @@ fun LockScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * Shown when the phone still holds an old pairing that the lock forgot
+ * (after a wipe). Android only lets the Settings app remove a pairing.
+ */
+@Composable
+fun RepairCard() {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Card)
+            .padding(18.dp)
+    ) {
+        Text("The lock was reset", color = Bad, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "A wipe makes the lock forget every paired phone. This phone still has the old pairing, so it can't connect.\n\n" +
+                "1. Open Bluetooth settings\n" +
+                "2. Tap ⚙ next to RollingLock → Unpair\n" +
+                "3. Come back, tap Scan & connect and enter the lock's new 6-digit key",
+            color = TextHi,
+            fontSize = 13.sp
+        )
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = {
+                context.startActivity(
+                    Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Bad, contentColor = Bg)
+        ) { Text("Open Bluetooth settings", fontWeight = FontWeight.SemiBold) }
     }
 }
 

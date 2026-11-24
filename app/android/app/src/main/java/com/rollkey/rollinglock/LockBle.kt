@@ -28,7 +28,9 @@ import java.util.UUID
 
 enum class LockStatus {
     IDLE, BT_OFF, NO_PERMISSION, SCANNING, CONNECTING, PAIRING, PAIRING_FAILED,
-    CONNECTED, DISCONNECTED, NOT_FOUND
+    CONNECTED, DISCONNECTED, NOT_FOUND,
+    /** Phone still holds an old pairing the lock no longer knows (lock was wiped). */
+    REPAIR_NEEDED
 }
 
 data class LockUiState(
@@ -56,6 +58,7 @@ class LockBle(private val context: Context) {
     private var gatt: BluetoothGatt? = null
     private var scanning = false
     private var pairAttempts = 0
+    private var gotValue = false         // true once a code arrived on this connection
 
     private val _state = MutableStateFlow(LockUiState())
     val state: StateFlow<LockUiState> = _state.asStateFlow()
@@ -133,6 +136,7 @@ class LockBle(private val context: Context) {
 
     private fun connect(device: BluetoothDevice) {
         pairAttempts = 0
+        gotValue = false
         _state.update { it.copy(status = LockStatus.CONNECTING) }
         gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
@@ -154,7 +158,13 @@ class LockBle(private val context: Context) {
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     gatt = null
                     g.close()
-                    _state.update { it.copy(status = LockStatus.DISCONNECTED) }
+                    // Bonded phone, dropped before any code arrived, and not a range
+                    // timeout: the lock rejected our stored keys, i.e. it was wiped.
+                    val stale = !gotValue && status != GATT_CONN_TIMEOUT &&
+                        g.device.bondState == BluetoothDevice.BOND_BONDED
+                    _state.update {
+                        it.copy(status = if (stale) LockStatus.REPAIR_NEEDED else LockStatus.DISCONNECTED)
+                    }
                 }
             }
         }
@@ -231,7 +241,10 @@ class LockBle(private val context: Context) {
     private fun handleAuthFailure(g: BluetoothGatt) {
         if (g !== gatt) return
         if (pairAttempts++ >= MAX_PAIR_ATTEMPTS) {
-            _state.update { it.copy(status = LockStatus.PAIRING_FAILED) }
+            val stale = g.device.bondState == BluetoothDevice.BOND_BONDED
+            _state.update {
+                it.copy(status = if (stale) LockStatus.REPAIR_NEEDED else LockStatus.PAIRING_FAILED)
+            }
             close()
             return
         }
@@ -247,6 +260,7 @@ class LockBle(private val context: Context) {
 
     private fun handleValue(bytes: ByteArray) {
         pairAttempts = 0
+        gotValue = true
         val text = String(bytes, Charsets.UTF_8).trim().ifEmpty { "----" }
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         _state.update { LockUiState(LockStatus.CONNECTED, text, time) }
@@ -255,5 +269,6 @@ class LockBle(private val context: Context) {
     private companion object {
         const val SCAN_TIMEOUT_MS = 20_000L
         const val MAX_PAIR_ATTEMPTS = 15
+        const val GATT_CONN_TIMEOUT = 8      // link lost / out of range
     }
 }

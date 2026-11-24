@@ -54,7 +54,7 @@ Each sketch lives in a folder with the same name (the Arduino IDE requires this)
 
 ## Push alerts (`rolling_code_lock_esp32_alerts`)
 
-Verified on the bench (USB power): test alert delivered to the phone.
+Verified on the bench: all event alerts delivered to the phone on adapter power (2026-11-24).
 
 | Measurement | Value |
 | :--- | :--- |
@@ -64,11 +64,13 @@ Verified on the bench (USB power): test alert delivered to the phone.
 | Wi-Fi connect | ~1.2–1.6 s |
 
 ### Settings before final use
+The repository now holds the **final** values (all 0 below except the rate limit). Set them back to 1 for bench testing with the Serial Monitor.
+
 | Setting | File | Bench | Final |
 | :--- | :--- | :--- | :--- |
 | `ALERT_TEST_ON_BOOT` | `alerts.h` | 1 | **0** (else a test alert on every power-up) |
 | `DEBUG` | `.ino` | 1 | **0** (DEBUG prints the current code to Serial) |
-| `ALERTS_LOG` | `alerts.h` | 1 | 0 or 1 (event types + heap only, no secrets) |
+| `ALERTS_LOG` | `alerts.h` | 1 | **0** (Serial is not started when `DEBUG` is 0) |
 | `ALERT_RATE_LIMIT_MS` | `alerts.h` | 30000 | 30000 |
 
 Secrets: run `python firmware/esp32/tools/make_secrets.py secrets/fcm-key.json` (writes `secrets.h` and `app/android/secrets.properties`, both git-ignored).
@@ -77,12 +79,12 @@ After switching BLE stacks, phones must **unpair RollingLock** in Android Blueto
 
 ### Test checklist (keypad + lock connected)
 - [x] Test alert on boot reaches the phone (app closed)
-- [ ] `#` + wrong code → "Wrong code entered"
-- [ ] Second wrong code → "Lock blocked after wrong codes"
-- [ ] Two failed recovery answers → "Lock fully locked out"
-- [ ] `#` + correct code → lock opens, then "Safe unlocked" (Wi-Fi only after the solenoid releases)
-- [ ] `*` → "Wipe attempted"; correct wipe PIN → after reboot, "Lock was wiped"
-- [ ] Same event twice within 30 s → only one alert
-- [ ] Wi-Fi off / router unplugged → lock still works normally, alert just fails
-- [ ] App: pair with the 6-digit key, code shows and updates after an unlock
-- [ ] Power from the adapter (no USB): no resets during unlock + alert (check reset reason)
+- [x] `#` + wrong code → "Wrong code entered"
+- [x] Second wrong code → "Lock blocked after wrong codes"
+- [x] Two failed recovery answers → "Lock fully locked out"
+- [x] `#` + correct code → lock opens, then "Safe unlocked" (Wi-Fi only after the solenoid releases)
+- [x] `*` → "Wipe attempted"; correct wipe PIN → after reboot, "Lock was wiped"
+- [x] Same event twice within 30 s → only one alert
+- [x] Wi-Fi off / router unplugged → lock still works normally, alert just fails (not resent later)
+- [x] App: pair with the 6-digit key, code shows and updates after an unlock
+- [x] Power from the adapter (no USB): no resets during unlock + alert (check reset reason)

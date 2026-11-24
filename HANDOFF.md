@@ -1,6 +1,6 @@
 # Handoff: add push alerts to the rolling code lock (ESP32 sends FCM directly)
 
-> **Status (2026-11-24):** built and verified end to end. Firmware: `firmware/esp32/rolling_code_lock_esp32_alerts/` (based on `oled_final`, BLE moved to NimBLE for memory). App: `app/android/` (new project v2). A test alert reached the phone. Remaining: event-by-event hardware tests — see the checklist in `firmware/esp32/README.md`.
+> **Status (2026-11-24):** built and verified end to end. Firmware: `firmware/esp32/rolling_code_lock_esp32_alerts/` (based on `oled_final`, BLE moved to NimBLE for memory). App: `app/android/` (new project v2). A test alert reached the phone. All event alerts verified on adapter power; final firmware (test alert, DEBUG and logs off) flashed. Wi-Fi-down test passed (lock unaffected). Full checklist complete — see `firmware/esp32/README.md`.
 
 Read this file first. The Firebase-side checklist (Stages 2 to 4) is **not in this repository yet**: the root `README.md` is the project overview. Ask me for the checklist before the Android step.
 
