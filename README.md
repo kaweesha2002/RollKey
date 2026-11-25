@@ -93,12 +93,12 @@ Package `com.rollkey.rollinglock`, Kotlin + Jetpack Compose. Details: [app/andro
 | Component | Part |
 | :--- | :--- |
 | MCU | ESP32 DevKit (30-pin, WROOM) |
-| Display | 1.3″ I2C OLED (SH1106), mounted upside down (`OLED_FLIP 1`) |
+| Display | 0.96″ I2C OLED (SH1106), mounted upside down (`OLED_FLIP 1`) |
 | Keypad | 4×4 matrix |
 | Lock | solenoid, ~12.6 Ω coil at 9 V (~0.7 A) |
 | Driver | IRLZ44N MOSFET: full power 300 ms, then ~40 % PWM hold; 1N4007/1N5822 flyback diode |
 | Indicators | red + green LED, passive piezo buzzer (tones near its 2.7 kHz resonance) |
-| Power | 5 V 3 A Type-C charger → UPS module with 2×18650 → 5 V to ESP32 VIN, and 3 A fuse → XL6009 boost → 9 V lock rail; 2× 470 µF 25 V |
+| Power | 5 V 3 A barrel jack charger → UPS module with 2×18650 → 5 V to ESP32 VIN, and 3 A fuse → XL6009 boost → 9 V lock rail; 2× 470 µF 25 V |
 
 | Signal | GPIO |
 | :--- | :--- |
