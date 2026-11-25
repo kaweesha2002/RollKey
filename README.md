@@ -2,7 +2,6 @@
 
 A keypad lock whose access code changes after every use. The **ESP32** lock shows nothing on its screen in standby. The **current code is only available in the RollKey Android app** over a paired Bluetooth link, and the owner gets **push alerts** on their phone for wrong codes, lockouts, unlocks and wipes, from anywhere with internet.
 
-The project started as a pure **AVR Assembly** lock on the ATmega328P (see [Original AVR version](#original-avr-version)) and was rebuilt on the ESP32.
 
 > **Status (Nov 2026):** firmware, app and push alerts are complete and **verified on the real hardware** (full checklist in [firmware/esp32/README.md](firmware/esp32/README.md)).
 
@@ -177,19 +176,11 @@ Git-ignored and local only: `secrets/`, `secrets.h`, `secrets.properties`, `goog
 
 ---
 
-## Original AVR version
 
-- **MCU:** ATmega328P @ 16 MHz, pure AVR Assembly, < 1.1 KB flash.
-- **Interface:** 4-bit parallel LCD + 4×3 keypad, solenoid via transistor, buzzer, red/green LEDs.
-- **Same core idea:** LFSR rolling code, `TCNT0` keypress entropy, EEPROM persistence, 9's-complement deadlock, `*` factory wipe.
-
-See [docs/current_status.md](docs/current_status.md) and [docs/system_flowchart.md](docs/system_flowchart.md).
-
----
 
 ## Team
 
-Built by a team of four (EE 356 course project, University of Peradeniya).
+Built by a team of undergrduates for EE 356 course project, University of Peradeniya
 
 ## License
 
