@@ -10,6 +10,7 @@ and the Android app. GitHub renders these diagrams automatically.
 4. [Wipe](#4-wipe)
 5. [Push alert sender (background task)](#5-push-alert-sender-background-task)
 6. [Phone pairing and code delivery](#6-phone-pairing-and-code-delivery)
+7. [Wi-Fi setup from the app](#7-wi-fi-setup-from-the-app)
 
 ---
 
@@ -21,7 +22,7 @@ flowchart TD
     classDef step fill:#3b3350,stroke:#CE93D8,color:#fff;
     classDef dec fill:#4d4526,stroke:#FFF59D,color:#fff;
 
-    A((Power on)) --> B[Start alert sender task<br/>queue 'wipe done' if flagged]
+    A((Power on)) --> B[Load Wi-Fi + alert topic from NVS<br/>new random topic on first boot<br/>start Wi-Fi task, queue 'wipe done' if flagged]
     B --> C[Init pins, solenoid off,<br/>OLED on I2C]
     C --> D{Owner numbers<br/>in NVS?}
     D -- No --> E[FIRST SETUP<br/>wipe PIN x2, restore number x2]
@@ -188,8 +189,11 @@ flowchart TD
     RL -- Yes --> X1[Dropped]
     RL -- No --> Q[Put in queue, return at once]
 
-    Q -.-> T0[Alert task waits for queue]
-    T0 --> B{Solenoid<br/>energised?}
+    Q -.-> T0[Wi-Fi task waits for queue<br/>alerts, scans and tests run one at a time]
+    T0 --> NW{Wi-Fi saved?}
+    NW -- No --> X3[Skip: alert not sent<br/>lock unaffected]
+    X3 --> M
+    NW -- Yes --> B{Solenoid<br/>energised?}
     B -- Yes --> B1[Wait] --> B
     B -- No --> W{Wi-Fi up?}
     W -- No --> W1[Turn Wi-Fi on, connect<br/>max 15 s]
@@ -215,8 +219,8 @@ flowchart TD
     M -- No --> OFF[Wi-Fi off] --> T0
 
     class Q,T0,B1,W1,N1,J,O,F step;
-    class RL,B,W,W2,N,TK,OK,RT,M dec;
-    class X1,X2 bad;
+    class RL,NW,B,W,W2,N,TK,OK,RT,M dec;
+    class X1,X2,X3 bad;
     class S1,OFF good;
 ```
 
@@ -246,6 +250,9 @@ sequenceDiagram
     P->>L: Pair (bonding + MITM + Secure Connections)
     P->>L: Subscribe to code updates, read code
     L-->>P: Current code (encrypted link only)
+    P->>L: Read alert topic and Wi-Fi status
+    L-->>P: This lock's own topic, e.g. "Connected to Home-2.4G"
+    P->>G: Subscribe to this lock's topic (drop any older one)
     Note over U,L: Later: owner types # + code on the keypad
     L-->>P: New code pushed after every unlock
     L->>G: Alert "Safe unlocked"
@@ -256,3 +263,42 @@ sequenceDiagram
     L-->>P: Rejected, link dropped before any code
     P->>U: "Lock was reset – pair again" + Bluetooth settings button
 ```
+
+---
+
+## 7. Wi-Fi setup from the app
+
+The owner sets the lock's Wi-Fi in the app; nothing is built into the firmware. All messages travel over the encrypted, paired Bluetooth link.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Owner
+    participant P as RollKey app
+    participant L as Lock (Bluetooth)
+    participant W as Lock Wi-Fi task
+
+    U->>P: Lock Wi-Fi card, tap "Set up Wi-Fi"
+    P->>L: Write "S" (scan)
+    L->>W: Queue scan
+    W-->>P: Status "scanning"
+    W->>W: Scan 2.4 GHz networks<br/>(waits if the lock is opening)
+    W-->>P: Status "scan:done"
+    P->>L: Read the full list (signal, lock icon, name)
+    U->>P: Tap a network, type the password, Connect
+    P->>L: Write "C" + name + password
+    L->>W: Queue test
+    W-->>P: Status "testing"
+    W->>W: Try to connect (max 15 s)
+    alt connected
+        W->>W: Save name + password in NVS (namespace "net")
+        W-->>P: "ok:" + network name, shown as Connected
+    else failed
+        W-->>P: "fail:password" / "fail:notfound" / "fail:timeout"
+        Note over W: Nothing saved, the old network stays
+    end
+    W->>W: Wi-Fi off
+```
+
+- The password is never logged and is cleared from memory after the test.
+- A wipe keeps the saved network and topic; *Erase All Flash* clears them.

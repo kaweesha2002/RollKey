@@ -7,8 +7,8 @@
  *
  * Hardware (see the schematic):
  *   OLED (I2C)      SDA GPIO21, SCL GPIO22, powered from the ESP32 3V3 pin
- *   Keypad 4x4      rows GPIO13, 14, 27, 26; columns GPIO25, 33, 32, 16
- *   Red / green LED GPIO19 / GPIO23, each through 220 ohm
+ *   Keypad 4x4      rows GPIO16, 32, 33, 25; columns GPIO26, 27, 14, 13
+ *   Red / green LED GPIO23 / GPIO19, each through 220 ohm
  *   Buzzer          GPIO18
  *   Solenoid gate   GPIO4 -> 220 ohm -> IRLZ44N (plain on/off, no PWM)
  *   Power           12 V bus from the UPS; 5 V from the buck converter to VIN
@@ -99,8 +99,8 @@
 #endif
 
 // ---------------- Pin map ----------------
-#define LED_RED   19      // error indicator
-#define LED_GREEN 23      // unlock / wipe indicator
+#define LED_RED   23      // error indicator
+#define LED_GREEN 19      // unlock / wipe indicator
 #define BUZZER    18      // passive piezo
 #define SOLENOID_PIN 4    // GPIO4 -> 220 ohm -> IRLZ44N gate (10k gate -> GND)
 // The OLED uses the I2C pins: SDA = GPIO21, SCL = GPIO22.
@@ -174,8 +174,10 @@ Preferences prefs;
 // ---------------- Keypad (4x4) ----------------
 const byte ROWS = 4;
 const byte COLS = 4;
-byte rowPins[ROWS] = {13, 14, 27, 26};
-byte colPins[COLS] = {25, 33, 32, 16};
+// Keypad connector is plugged in reversed, so the keypad's row wires sit on
+// the GPIOs first planned for columns (and the other way round), in reverse order.
+byte rowPins[ROWS] = {16, 32, 33, 25};   // keypad rows 1-4
+byte colPins[COLS] = {26, 27, 14, 13};   // keypad columns 1-4
 
 char keys[ROWS][COLS] = {
   {'1','2','3','A'},

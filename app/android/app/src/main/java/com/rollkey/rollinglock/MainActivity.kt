@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,14 +29,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -53,6 +58,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -388,6 +397,11 @@ fun LockScreen(
             }
         }
 
+        if (connected) {
+            Spacer(Modifier.height(16.dp))
+            WifiCard(ui, ble)
+        }
+
         Spacer(Modifier.height(16.dp))
         AlertsCard(onAllowNotifications = { askNotifications() })
 
@@ -471,7 +485,7 @@ fun AlertsCard(onAllowNotifications: () -> Unit) {
         AlertSetup.SUBSCRIBE_FAILED   -> "Could not subscribe – check internet" to Bad
         AlertSetup.NO_PERMISSION      -> "Notifications are blocked" to Bad
         AlertSetup.NO_FIREBASE_CONFIG -> "Alerts not set up in this build (google-services.json)" to Muted
-        AlertSetup.NO_TOPIC           -> "Alerts not set up in this build (topic missing)" to Muted
+        AlertSetup.NO_TOPIC           -> "Connect to your lock once to turn on alerts" to Muted
     }
 
     Column(
@@ -516,6 +530,248 @@ fun AlertsCard(onAllowNotifications: () -> Unit) {
                     Text(fmt.format(Date(a.time)), color = Muted, fontSize = 12.sp)
                 }
             }
+        }
+    }
+}
+
+// ---------------- Lock Wi-Fi ----------------
+
+private enum class WifiStage { STATUS, LIST, PASSWORD, CONNECTING }
+
+private fun wifiText(status: String): Pair<String, Color> = when {
+    status.startsWith("ok:")     -> "Connected to ${status.removePrefix("ok:")}" to Good
+    status.startsWith("saved:")  -> "Connected to ${status.removePrefix("saved:")}" to Good
+    status == "none"             -> "Wi-Fi not set up – alerts are off" to Warn
+    status == "testing"          -> "Connecting…" to Warn
+    status == "scanning"         -> "Searching for networks…" to Warn
+    status == "fail:password"    -> "Wrong password" to Bad
+    status == "fail:notfound"    -> "Network not found" to Bad
+    status == "fail:timeout"     -> "No response from the network" to Bad
+    status == "fail:busy"        -> "Lock is busy, try again" to Bad
+    status == "fail:send"        -> "Could not send to the lock, try again" to Bad
+    status == "fail:unsupported" -> "This lock's firmware has no Wi-Fi setup" to Muted
+    status.startsWith("fail:")   -> "Could not connect" to Bad
+    else                         -> "Checking Wi-Fi…" to Muted
+}
+
+/** 1..4 bars from RSSI (dBm). */
+private fun signalBars(rssi: Int) = when {
+    rssi >= -55 -> 4
+    rssi >= -67 -> 3
+    rssi >= -78 -> 2
+    else        -> 1
+}
+
+@Composable
+private fun SignalBars(rssi: Int) {
+    val level = signalBars(rssi)
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (i in 1..4) {
+            Box(
+                Modifier
+                    .size(width = 4.dp, height = (3 + 3 * i).dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(if (i <= level) Accent else Muted.copy(alpha = 0.35f))
+            )
+        }
+    }
+}
+
+@Composable
+private fun SmallSpinner(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text, color = Muted, fontSize = 13.sp)
+    }
+}
+
+/** Shown while connected: lets the owner put the lock on their Wi-Fi (needed for push alerts). */
+@Composable
+fun WifiCard(ui: LockUiState, ble: LockBle) {
+    var stage by remember { mutableStateOf(WifiStage.STATUS) }
+    var selected by remember { mutableStateOf<WifiNet?>(null) }
+    var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    // Last status that says something about the saved network (not a scan state).
+    var lastConn by remember { mutableStateOf("") }
+
+    val status = ui.wifiStatus
+    LaunchedEffect(status) {
+        if (status.isNotEmpty() && status != "scanning" && !status.startsWith("scan:done")) {
+            lastConn = status
+        }
+        if (stage == WifiStage.CONNECTING) {
+            when {
+                status.startsWith("ok:") -> {
+                    stage = WifiStage.STATUS
+                    password = ""
+                    error = null
+                }
+                status.startsWith("fail:") -> {
+                    error = wifiText(status).first
+                    stage = if (status == "fail:password" && selected?.locked == true)
+                        WifiStage.PASSWORD else WifiStage.LIST
+                }
+            }
+        }
+    }
+
+    val headerStatus = if (status.startsWith("scan:done")) lastConn else status
+    val (text, color) = wifiText(headerStatus)
+    val scanning = status == "scanning"
+
+    fun connectTo(net: WifiNet, pass: String) {
+        error = null
+        if (ble.connectWifi(net.ssid, pass)) stage = WifiStage.CONNECTING
+        else error = "Name or password is too long"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Card)
+            .padding(18.dp)
+    ) {
+        Text("LOCK WI-FI", color = Muted, fontSize = 12.sp, letterSpacing = 3.sp)
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(10.dp).clip(CircleShape).background(color))
+            Spacer(Modifier.width(10.dp))
+            Text(text, color = TextHi, fontSize = 14.sp)
+        }
+        error?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, color = Bad, fontSize = 13.sp)
+        }
+        Spacer(Modifier.height(12.dp))
+
+        when (stage) {
+            WifiStage.STATUS -> {
+                if (status != "fail:unsupported") {
+                    val saved = lastConn.startsWith("ok:") || lastConn.startsWith("saved:")
+                    Button(
+                        onClick = { error = null; ble.scanWifi(); stage = WifiStage.LIST },
+                        enabled = status.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Bg)
+                    ) {
+                        Text(if (saved) "Change Wi-Fi" else "Set up Wi-Fi", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            WifiStage.LIST -> {
+                when {
+                    scanning || (!status.startsWith("scan:done") && ui.wifiNetworks.isEmpty() && error == null) ->
+                        SmallSpinner("Searching for networks…")
+                    ui.wifiNetworks.isEmpty() ->
+                        Text(
+                            "No networks found. Move the lock closer to the router and scan again.",
+                            color = Muted,
+                            fontSize = 13.sp
+                        )
+                    else -> {
+                        Text("Choose your network", color = Muted, fontSize = 13.sp)
+                        Spacer(Modifier.height(6.dp))
+                        ui.wifiNetworks.forEach { net ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        selected = net
+                                        error = null
+                                        password = ""
+                                        showPassword = false
+                                        if (net.locked) stage = WifiStage.PASSWORD else connectTo(net, "")
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                SignalBars(net.rssi)
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    net.ssid,
+                                    color = TextHi,
+                                    fontSize = 15.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (net.locked) Text("🔒", fontSize = 13.sp, color = Muted)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { error = null; stage = WifiStage.STATUS },
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Cancel") }
+                    OutlinedButton(
+                        onClick = { error = null; ble.scanWifi() },
+                        enabled = !scanning,
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) { Text("Scan again") }
+                }
+            }
+
+            WifiStage.PASSWORD -> {
+                val net = selected
+                if (net == null) {
+                    LaunchedEffect(Unit) { stage = WifiStage.LIST }
+                } else {
+                    Text("Password for ${net.ssid}", color = TextHi, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { if (it.toByteArray(Charsets.UTF_8).size <= 63) password = it },
+                        singleLine = true,
+                        placeholder = { Text("Wi-Fi password", color = Muted) },
+                        visualTransformation =
+                            if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            TextButton(onClick = { showPassword = !showPassword }) {
+                                Text(if (showPassword) "Hide" else "Show", color = Accent, fontSize = 13.sp)
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextHi,
+                            unfocusedTextColor = TextHi,
+                            focusedBorderColor = Accent,
+                            unfocusedBorderColor = Muted,
+                            cursorColor = Accent
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { error = null; stage = WifiStage.LIST },
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) { Text("Back") }
+                        Button(
+                            onClick = { connectTo(net, password) },
+                            enabled = password.isNotEmpty(),
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Bg)
+                        ) { Text("Connect", fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+            }
+
+            WifiStage.CONNECTING ->
+                SmallSpinner("Testing ${selected?.ssid ?: "the network"}… this can take up to 20 s")
         }
     }
 }

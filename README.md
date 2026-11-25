@@ -41,6 +41,15 @@ Step-by-step flowcharts (setup, code entry, lockout, wipe, alert sender, phone p
 
 The OLED is dark in standby and wakes on `#` or `*`.
 
+### Setting up a new lock (owner / buyer)
+1. **Power on** and set the wipe PIN, restore number and 6-digit pair key on the keypad (first power-up prompts above).
+2. **Install the RollKey app**, set an app PIN and allow notifications.
+3. Tap **Scan & connect** and enter the pair key when Android asks.
+4. In the **Lock Wi-Fi** card tap **Set up Wi-Fi**: the lock lists the 2.4 GHz networks it can see, pick yours and type the password. The lock **tests the connection before saving it** and shows *Connected*, *Wrong password* or *Network not found*.
+5. Done: the app has read this lock's own alert topic, so alerts reach this phone from anywhere.
+
+To move to a new network later, run **Set up Wi-Fi** again. A wipe keeps the Wi-Fi and alert topic; *Erase All Flash* (full factory reset, e.g. for resale) clears everything.
+
 ---
 
 ## Push alerts
@@ -58,7 +67,9 @@ The OLED is dark in standby and wakes on `#` or `*`.
 - **At most one alert per event type every 30 s.**
 - **Wi-Fi is on only while sending,** and never while the solenoid is energised.
 - **If Wi-Fi is down,** the lock works normally and that alert is dropped (tested).
-- **The lock and the phone don't need the same network.** The lock needs any 2.4 GHz Wi-Fi with internet. The phone receives alerts anywhere.
+- **The lock and the phone don't need the same network.** The lock needs any 2.4 GHz Wi-Fi with internet, set from the app. The phone receives alerts anywhere.
+- **Each lock has its own random alert topic,** created on first boot and read by the paired app, so owners only get their own lock's alerts.
+- **No Wi-Fi set up yet:** the lock works normally; alerts are simply not sent.
 - **Firebase Spark (free) plan:** the ESP32 signs its own Google OAuth token. No Cloud Functions, no billing.
 
 ---
@@ -66,7 +77,8 @@ The OLED is dark in standby and wakes on `#` or `*`.
 ## Android app (RollKey)
 
 - **Code:** scans for `RollingLock`, pairs with the 6-digit key, shows the current code with live updates, and can copy it to the clipboard.
-- **Alerts:** subscribes to the lock's alert topic and shows notifications even when the app is closed. Recent alerts are listed in the app.
+- **Lock Wi-Fi:** scan from the lock, pick a network, type the password; the lock tests and saves it.
+- **Alerts:** reads the paired lock's own alert topic, subscribes to it and shows notifications even when the app is closed. Recent alerts are listed in the app.
 - **Wiped lock:** detects that the lock forgot this phone and shows *Lock was reset – pair again* with a button to Bluetooth settings (Android only lets Settings remove a pairing).
 - **App lock:** 6-digit PIN (salted PBKDF2, slows down after 5 wrong tries), optional fingerprint, auto-lock after 30 s in the background, and screenshots are blocked.
 
@@ -104,9 +116,9 @@ Package `com.rollkey.rollinglock`, Kotlin + Jetpack Compose. Details: [app/andro
 | Signal | GPIO |
 | :--- | :--- |
 | OLED SDA / SCL | 21 / 22 |
-| Keypad rows | 13, 14, 27, 26 |
-| Keypad columns | 25, 33, 32, 16 |
-| Red / green LED | 19 / 23 |
+| Keypad rows 1-4 | 16, 32, 33, 25 |
+| Keypad columns 1-4 | 26, 27, 14, 13 |
+| Red / green LED | 23 / 19 |
 | Buzzer | 18 |
 | Solenoid MOSFET gate | 4 |
 
@@ -132,7 +144,7 @@ Schematic, wiring table (wire gauges and currents) and BOM: [hardware/README.md]
    ```powershell
    python firmware/esp32/tools/make_secrets.py secrets/fcm-key.json
    ```
-   It asks for the Wi-Fi name and password and writes `secrets.h` (firmware) and `secrets.properties` (app) with a shared random topic.
+   It writes `secrets.h` (firmware) with the service account. Wi-Fi and the alert topic are **not** needed here: each lock gets them from the app and its own first boot. (`--wifi` pre-loads Wi-Fi on a bench lock.)
 
 Without these files everything still builds; alerts are simply off.
 
@@ -148,6 +160,7 @@ $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"; .\gradlew.bat asse
 | `DEBUG` | sketch `.ino` | 0 | 1 (prints codes to Serial) |
 | `ALERT_TEST_ON_BOOT` | `alerts.h` | 0 | 1 (test alert at every boot) |
 | `ALERTS_LOG` | `alerts.h` | 0 | 1 (alert progress + memory) |
+| `PROVISION_FROM_SECRETS` | `alerts.h` | 0 for locks you sell | 1 (copy `WIFI_SSID`/`WIFI_PASS` from `secrets.h` when no Wi-Fi is saved) |
 
 ---
 
@@ -172,7 +185,7 @@ rollinglock/
 └── README.md
 ```
 
-Git-ignored and local only: `secrets/`, `secrets.h`, `secrets.properties`, `google-services.json`, `local.properties`, and build output.
+Git-ignored and local only: `secrets/`, `secrets.h`, `google-services.json`, `local.properties`, and build output.
 
 ---
 

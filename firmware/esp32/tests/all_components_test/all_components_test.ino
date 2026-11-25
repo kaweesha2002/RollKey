@@ -26,8 +26,8 @@
 #define SDA_PIN       21
 #define SCL_PIN       22
 
-#define LED_RED       19
-#define LED_GREEN     23
+#define LED_RED       23
+#define LED_GREEN     19
 #define BUZZER        18
 #define SOLENOID_PIN  4
 #define STATUS_LED    2

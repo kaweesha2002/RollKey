@@ -6,6 +6,8 @@
  * background task over Wi-Fi. Needs secrets.h (see secrets.example.h);
  * without it the sketch builds with alerts off. Partition: Huge APP.
  * BLE uses the NimBLE-Arduino library (Bluedroid left too little RAM for HTTPS).
+ * Wi-Fi is set up from the app over Bluetooth (scan, pick, test, save), and
+ * each lock has its own random alert topic that the app reads after pairing.
  * Enrollment / dark standby / code entry / unlock / deadlock / gated wipe
  *
  * Board: ESP32 Dev Module (30-pin DevKit, WROOM)
@@ -13,8 +15,8 @@
  *
  * Hardware (see the schematic):
  *   OLED (I2C)      SDA GPIO21, SCL GPIO22, powered from the ESP32 3V3 pin
- *   Keypad 4x4      rows GPIO13, 14, 27, 26; columns GPIO25, 33, 32, 16
- *   Red / green LED GPIO19 / GPIO23, each through 220 ohm
+ *   Keypad 4x4      rows GPIO16, 32, 33, 25; columns GPIO26, 27, 14, 13
+ *   Red / green LED GPIO23 / GPIO19, each through 220 ohm
  *   Buzzer          GPIO18
  *   Solenoid gate   GPIO4 -> 220 ohm -> IRLZ44N (PWM pull-in, then hold)
  *   Power           12 V bus from the UPS; 5 V from the buck converter to VIN
@@ -102,8 +104,8 @@
 #endif
 
 // ---------------- Pin map ----------------
-#define LED_RED   19      // error indicator
-#define LED_GREEN 23      // unlock / wipe indicator
+#define LED_RED   23      // error indicator
+#define LED_GREEN 19      // unlock / wipe indicator
 #define BUZZER    18      // passive piezo
 #define SOLENOID_PIN 4    // GPIO4 -> 220 ohm -> IRLZ44N gate (10k gate -> GND)
 // The OLED uses the I2C pins: SDA = GPIO21, SCL = GPIO22.
@@ -183,8 +185,10 @@ Preferences prefs;
 // ---------------- Keypad (4x4) ----------------
 const byte ROWS = 4;
 const byte COLS = 4;
-byte rowPins[ROWS] = {13, 14, 27, 26};
-byte colPins[COLS] = {25, 33, 32, 16};
+// Keypad connector is plugged in reversed, so the keypad's row wires sit on
+// the GPIOs first planned for columns (and the other way round), in reverse order.
+byte rowPins[ROWS] = {16, 32, 33, 25};   // keypad rows 1-4
+byte colPins[COLS] = {26, 27, 14, 13};   // keypad columns 1-4
 
 char keys[ROWS][COLS] = {
   {'1','2','3','A'},
@@ -933,7 +937,10 @@ void codeEntry() {
 
 // ---------------- Bluetooth (BLE) ----------------
 #define BLE_SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define BLE_CHAR_UUID    "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define BLE_CHAR_UUID    "beb5483e-36e1-4688-b7f5-ea07361b26a8"   // current code (read + notify)
+#define BLE_TOPIC_UUID   "beb5483e-36e1-4688-b7f5-ea07361b26a9"   // alert topic (read)
+#define BLE_WIFICTL_UUID "beb5483e-36e1-4688-b7f5-ea07361b26aa"   // Wi-Fi commands (write)
+#define BLE_WIFIST_UUID  "beb5483e-36e1-4688-b7f5-ea07361b26ab"   // Wi-Fi status (read + notify)
 #define BLE_WINDOW_MS    60000UL      // visible for 60 s after each unlock
 #define BLE_ALWAYS_ON    1            // 1 = always visible (paired phones only)
                                       // 0 = only for BLE_WINDOW_MS after unlock
@@ -943,6 +950,9 @@ void codeEntry() {
 // push-alert HTTPS connection needs. Bonds are kept in NVS by NimBLE.
 NimBLEServer         *bleServer;
 NimBLECharacteristic *bleChar;
+NimBLECharacteristic *bleTopicChar;
+NimBLECharacteristic *bleWifiCtrl;
+NimBLECharacteristic *bleWifiStatus;
 bool     bleAdvertising = false;
 uint32_t bleStopAt      = 0;
 
@@ -964,6 +974,51 @@ class LockServerCb : public NimBLEServerCallbacks {
     }
   }
 };
+
+// Notify only phones on an encrypted + authenticated (paired) link.
+// len = 0 sends the whole value; otherwise only the first len bytes.
+void bleNotifySecure(NimBLECharacteristic *c, const uint8_t *data = nullptr, size_t len = 0) {
+  for (uint16_t h : bleServer->getPeerDevices()) {
+    NimBLEConnInfo ci = bleServer->getPeerInfoByHandle(h);
+    if (!ci.isEncrypted() || !ci.isAuthenticated()) continue;
+    if (data) c->notify(data, len, h);
+    else      c->notify(h);
+  }
+}
+
+// ---- Wi-Fi setup from the app ----
+// WIFI_CTRL write: "S" = scan; 'C' + 1 byte ssid length + ssid + password = connect.
+// The characteristic itself requires an encrypted, passkey-paired link.
+class WifiCtrlCb : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &info) override {
+    if (!info.isEncrypted() || !info.isAuthenticated()) return;
+    NimBLEAttValue v = c->getValue();
+    const uint8_t *d = v.data();
+    size_t n = v.size();
+    if (n == 1 && d[0] == 'S') {
+      alertsWifiScan();
+    } else if (n >= 2 && d[0] == 'C') {
+      size_t sl = d[1];
+      if (sl == 0 || sl > 32 || 2 + sl > n || n - 2 - sl > 64) return;
+      char ssid[33], pass[65];
+      memcpy(ssid, d + 2, sl);                ssid[sl] = 0;
+      memcpy(pass, d + 2 + sl, n - 2 - sl);   pass[n - 2 - sl] = 0;
+      alertsWifiSet(ssid, pass);
+      memset(pass, 0, sizeof(pass));
+    }
+    c->setValue((uint8_t *)"", 0);            // never keep the password in the attribute
+  }
+};
+
+// Called by the Wi-Fi task on every status change: store the full text, and
+// notify only its first line (a scan list can be longer than one BLE packet;
+// the app reads the full value when it sees "scan:done").
+void bleWifiStatusChanged(const char *st) {
+  bleWifiStatus->setValue(st);
+  const char *nl = strchr(st, '\n');
+  size_t len = nl ? (size_t)(nl - st) : strlen(st);
+  bleNotifySecure(bleWifiStatus, (const uint8_t *)st, len);
+}
 
 // Removes every bonded (paired) phone from the lock.
 void bleClearBonds() {
@@ -994,6 +1049,20 @@ void bleBegin() {
       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN |
       NIMBLE_PROPERTY::NOTIFY);
   bleChar->setValue("----");          // nothing revealed until an unlock
+
+  // Alert topic and Wi-Fi setup: same rule, paired phones only.
+  bleTopicChar = svc->createCharacteristic(
+      BLE_TOPIC_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN, 48);
+  bleTopicChar->setValue(alertsTopic());
+  bleWifiCtrl = svc->createCharacteristic(
+      BLE_WIFICTL_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN, 128);
+  bleWifiCtrl->setCallbacks(new WifiCtrlCb());
+  bleWifiStatus = svc->createCharacteristic(
+      BLE_WIFIST_UUID,
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN | NIMBLE_PROPERTY::NOTIFY,
+      512);
+  bleWifiStatus->setValue(alertsWifiStatus().c_str());
+  alertsOnStatus(bleWifiStatusChanged);
   svc->start();
 
   NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
@@ -1010,11 +1079,7 @@ void blePublishCode() {
   s[CODE_LEN] = 0;
 
   bleChar->setValue(s);
-  // Notify only phones on an encrypted + authenticated (paired) link.
-  for (uint16_t h : bleServer->getPeerDevices()) {
-    NimBLEConnInfo ci = bleServer->getPeerInfoByHandle(h);
-    if (ci.isEncrypted() && ci.isAuthenticated()) bleChar->notify(h);
-  }
+  bleNotifySecure(bleChar);           // paired phones only
 
   if (!bleAdvertising) {
     NimBLEDevice::startAdvertising();

@@ -1,5 +1,3 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -10,14 +8,6 @@ plugins {
 // Without it the app still builds, but push alerts are off.
 val hasFirebaseConfig = file("google-services.json").exists()
 if (hasFirebaseConfig) apply(plugin = "com.google.gms.google-services")
-
-// The alert topic must match FCM_TOPIC in the ESP32's secrets.h.
-// It lives in the git-ignored app/android/secrets.properties (see secrets.example.properties).
-val secrets = Properties().apply {
-    val f = rootProject.file("secrets.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
-}
-val alertTopic: String = secrets.getProperty("ALERT_TOPIC", "")
 
 android {
     namespace = "com.rollkey.rollinglock"
@@ -31,7 +21,6 @@ android {
         targetSdk = 37
         versionCode = 2
         versionName = "2.0"
-        buildConfigField("String", "ALERT_TOPIC", "\"$alertTopic\"")
         buildConfigField("boolean", "HAS_FIREBASE_CONFIG", "$hasFirebaseConfig")
     }
 

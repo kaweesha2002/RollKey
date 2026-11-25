@@ -1,6 +1,6 @@
 // OLED + keypad test. The ESP32 is powered from the laptop over USB.
 // OLED:   VDD -> 3V3, GND -> GND, SCK -> GPIO22, SDA -> GPIO21
-// Keypad: rows GPIO13, 14, 27, 26   columns GPIO25, 33, 32, 16
+// Keypad: rows GPIO16, 32, 33, 25   columns GPIO26, 27, 14, 13
 // Keep the VIN pin disconnected while USB is plugged in.
 // Open the Serial Monitor at 115200 baud.
 #include <Wire.h>
@@ -29,8 +29,10 @@ char keys[ROWS][COLS] = {
   {'7','8','9','C'},
   {'*','0','#','D'}
 };
-byte rowPins[ROWS] = {13, 14, 27, 26};
-byte colPins[COLS] = {25, 33, 32, 16};
+// Keypad connector is plugged in reversed, so the keypad's row wires sit on
+// the GPIOs first planned for columns (and the other way round), in reverse order.
+byte rowPins[ROWS] = {16, 32, 33, 25};   // keypad rows 1-4
+byte colPins[COLS] = {26, 27, 14, 13};   // keypad columns 1-4
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 enum State { GUIDED, RESULT, FREE };

@@ -24,7 +24,7 @@ data class AlertItem(val id: String, val event: String, val text: String, val ti
 
 enum class AlertSetup {
     NO_FIREBASE_CONFIG,   // google-services.json missing at build time
-    NO_TOPIC,             // secrets.properties / ALERT_TOPIC missing at build time
+    NO_TOPIC,             // never connected to a lock yet, so its topic is unknown
     NO_PERMISSION,        // notifications blocked on this phone
     SUBSCRIBING,
     SUBSCRIBE_FAILED,
@@ -72,23 +72,55 @@ object Alerts {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
 
+    private fun setupPrefs(context: Context) =
+        context.applicationContext.getSharedPreferences("alert_setup", Context.MODE_PRIVATE)
+
+    /** The lock's alert topic, saved the last time the app read it over Bluetooth. */
+    fun storedTopic(context: Context): String? =
+        setupPrefs(context).getString("topic", null)?.takeIf { it.isNotBlank() }
+
+    private fun firebaseReady(app: Context) =
+        BuildConfig.HAS_FIREBASE_CONFIG && FirebaseApp.getApps(app).isNotEmpty()
+
     /** Checks config + permission, then subscribes to the lock's topic. */
     fun refreshSetup(context: Context) {
         val app = context.applicationContext
+        val topic = storedTopic(app)
         when {
-            !BuildConfig.HAS_FIREBASE_CONFIG || FirebaseApp.getApps(app).isEmpty() ->
-                _setup.value = AlertSetup.NO_FIREBASE_CONFIG
-            BuildConfig.ALERT_TOPIC.isBlank() -> _setup.value = AlertSetup.NO_TOPIC
+            !firebaseReady(app) -> _setup.value = AlertSetup.NO_FIREBASE_CONFIG
+            topic == null -> _setup.value = AlertSetup.NO_TOPIC
             !notificationsAllowed(app) -> _setup.value = AlertSetup.NO_PERMISSION
             else -> {
                 _setup.value = AlertSetup.SUBSCRIBING
-                FirebaseMessaging.getInstance().subscribeToTopic(BuildConfig.ALERT_TOPIC)
+                FirebaseMessaging.getInstance().subscribeToTopic(topic)
                     .addOnCompleteListener { task ->
+                        // Ignore a late result for a topic that was replaced meanwhile.
+                        if (storedTopic(app) != topic) return@addOnCompleteListener
                         _setup.value = if (task.isSuccessful) AlertSetup.READY else AlertSetup.SUBSCRIBE_FAILED
                     }
             }
         }
     }
+
+    /**
+     * Called with the topic read from the lock over Bluetooth. If it changed
+     * (first lock, or a different lock), move the subscription to the new topic.
+     */
+    fun onTopicFromLock(context: Context, topic: String) {
+        val app = context.applicationContext
+        val t = topic.trim()
+        if (!TOPIC_RE.matches(t)) return
+        val old = storedTopic(app)
+        if (old == t) return
+        setupPrefs(app).edit().putString("topic", t).apply()
+        if (old != null && firebaseReady(app)) {
+            FirebaseMessaging.getInstance().unsubscribeFromTopic(old)
+        }
+        refreshSetup(app)
+    }
+
+    /** FCM topic names: letters, digits and -_.~% only. */
+    private val TOPIC_RE = Regex("[a-zA-Z0-9_.~%-]{1,900}")
 
     // ---------------- History (local only) ----------------
 
