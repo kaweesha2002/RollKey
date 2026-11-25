@@ -19,12 +19,6 @@ app/android/.idea/
 *.apk
 *.aab
 
-# ---------------- AVR build artifacts ----------------
-firmware/avr/*.hex
-firmware/avr/*.elf
-firmware/avr/*.map
-firmware/avr/*.lst
-
 # ---------------- ESP32 build artifacts ----------------
 firmware/esp32/**/build/
 firmware/esp32/.pio/

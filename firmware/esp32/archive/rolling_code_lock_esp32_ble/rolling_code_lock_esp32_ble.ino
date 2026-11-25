@@ -18,8 +18,8 @@
  * so an 'A' could never be distinguished from a '0' on entry. A PIN holding
  * at least one letter therefore can never equal any rolling code.
  *
- * Deviations from the AVR source (all deliberate):
- *   - seed == 0 is clamped to the restore number (AVR trapped there forever)
+ * Design notes:
+ *   - seed == 0 is clamped to the restore number (an LFSR would stay at 0)
  *   - explicit "init" flag in NVS replaces the 0xFFFF blank sentinel
  *   - factory wipe fires LED + buzzer only; the relay stays de-energized
  *   - deadlock challenge digits come from the hardware RNG, not seed_L
@@ -89,9 +89,9 @@
 #endif
 
 // ---------------- Pin map ----------------
-#define LED_RED   23      // PC4: error indicator
-#define LED_GREEN 19      // PC5: unlock / wipe indicator
-#define BUZZER    18      // PD2
+#define LED_RED   23      // error indicator
+#define LED_GREEN 19      // unlock / wipe indicator
+#define BUZZER    18      // passive piezo
 #define RELAY     4       // solenoid driver pin: GPIO4 -> 220 ohm -> IRLZ44N gate (10k gate->GND pull-down)
 #define RELAY_ACTIVE_LOW 0   // 0 = HIGH switches the solenoid ON (MOSFET, or active-high relay)
                              // 1 = LOW switches it ON (active-low relay module only)

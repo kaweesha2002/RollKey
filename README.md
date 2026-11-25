@@ -23,6 +23,8 @@ A keypad lock whose access code changes after every use. The **ESP32** lock show
 3. The new code is sent to the paired phone over Bluetooth. It is **never shown on the lock's screen**.
 4. Security events are queued and sent as push alerts by a background task, so the keypad and lock never wait for the network.
 
+Step-by-step flowcharts (setup, code entry, lockout, wipe, alert sender, phone pairing): [docs/system_flowchart.md](docs/system_flowchart.md).
+
 ---
 
 ## Using the lock
@@ -76,7 +78,7 @@ Package `com.rollkey.rollinglock`, Kotlin + Jetpack Compose. Details: [app/andro
 
 | Feature | ESP32 implementation |
 | :--- | :--- |
-| Rolling code | 16-bit Galois LFSR (feedback `0xB4`, as in the AVR original), new 4-digit code after every unlock |
+| Rolling code | 16-bit Galois LFSR (feedback `0xB4`), new 4-digit code after every unlock |
 | Entropy | keypress timing (`micros()`) mixed into the seed after each unlock; challenge digits from the hardware RNG |
 | Persistence | seed, owner numbers and pair key in NVS flash, so a power cut can't bypass the lock |
 | Lockout | 2 wrong codes → challenge; 2 failed challenges → hard lockout |
@@ -154,21 +156,19 @@ $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"; .\gradlew.bat asse
 ```
 rollinglock/
 ├── firmware/
-│   ├── esp32/
-│   │   ├── rolling_code_lock_esp32_alerts/   ← MAIN: lock + push alerts (alerts.h/.cpp, secrets.example.h)
-│   │   ├── rolling_code_lock_esp32_oled_final/ ← lock without alerts (Bluedroid BLE)
-│   │   ├── variants/                         ← 1 s solenoid, keypad remap, preset-PIN test builds
-│   │   ├── tests/                            ← OLED, keypad, solenoid, all-components, power tests
-│   │   ├── tools/make_secrets.py             ← writes the git-ignored secret files
-│   │   └── archive/                          ← older LCD-era sketch
-│   └── avr/                                  ← original ATmega328P version (docs only)
+│   └── esp32/
+│       ├── rolling_code_lock_esp32_alerts/   ← MAIN: lock + push alerts (alerts.h/.cpp, secrets.example.h)
+│       ├── rolling_code_lock_esp32_oled_final/ ← lock without alerts (Bluedroid BLE)
+│       ├── variants/                         ← 1 s solenoid, keypad remap, preset-PIN test builds
+│       ├── tests/                            ← OLED, keypad, solenoid, all-components, power tests
+│       ├── tools/make_secrets.py             ← writes the git-ignored secret files
+│       └── archive/                          ← older LCD-era sketch
 ├── app/
 │   ├── android/                              ← RollKey app (Android Studio project)
 │   └── archive/android_v1/                   ← earlier app sources
 ├── hardware/                                 ← schematics (+ revisions), wiring table, photos
-├── docs/                                     ← AVR status/roadmap, state-machine flowchart
+├── docs/system_flowchart.md                  ← flowcharts: lock state machine, wipe, alert sender
 ├── secrets/                                  ← service account key (git-ignored, local only)
-├── HANDOFF.md                                ← push-alert design brief and status
 └── README.md
 ```
 
